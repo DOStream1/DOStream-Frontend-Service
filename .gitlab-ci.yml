@@ -1,0 +1,240 @@
+# # You can override the included template(s) by including variable overrides
+# # SAST customization: https://docs.gitlab.com/ee/USER/application_security/sast/#customizing-the-sast-settings
+# # Secret Detection customization: https://docs.gitlab.com/ee/USER/application_security/secret_detection/#customizing-settings
+# # Dependency Scanning customization: https://docs.gitlab.com/ee/USER/application_security/dependency_scanning/#customizing-the-dependency-scanning-settings
+# # Container Scanning customization: https://docs.gitlab.com/ee/USER/application_security/container_scanning/#customizing-the-container-scanning-settings
+# # Note that environment variables can be set in several places
+# # See https://docs.gitlab.com/ee/ci/variables/#cicd-variable-precedence
+
+
+# # stages:
+# #   - build
+# #   - test
+# #   - deploy
+
+# # variables:
+# #   SSH_PRIVATE_KEY_DEV: "$CI_RUNNER_SSH_PRIVATE_KEY_DEV"  # This variable is set in GitLab CI/CD settings
+
+# # before_script:
+# #   - apt-get update -qy
+# #   - apt-get install -y openssh-client
+
+# # build:
+# #   stage: build
+# #   script:
+# #     - npm install
+# #     - npm run build
+
+# # sast:
+# #   stage: test
+# # include:
+# # - template: Security/SAST.gitlab-ci.yml
+
+
+# # deploy:
+# #   stage: deploy
+# #   script:
+# #     - 'which ssh-agent || (apt-get install -y openssh-client)'
+# #     - eval $(ssh-agent -s)
+# #     - echo "$SSH_PRIVATE_KEY_DEV" | tr -d '\r' | ssh-add - > /dev/null
+# #     - mkdir -p ~/.ssh
+# #     - chmod 700 ~/.ssh
+# #     - ssh-keyscan -H your-ec2-ip >> ~/.ssh/known_hosts  # Replace your-ec2-ip with your EC2 instance IP
+# #     - scp -r -i /path/to/your/private/key.pem build/ ec2-USER@your-ec2-ip:/path/to/your/app  # Adjust paths accordingly
+
+
+# stages:
+#   - install
+#   - build
+#   - package
+#   - quality
+#   - audit
+#   - Dev-Deploy
+#   - Stg-Deploy
+#   - Prod-Deploy
+  
+# variables:
+#   CI_NODE_INDEX: "0"
+#   NODE_VERSION: "v18.18.0"
+
+
+# cache:
+#   paths:
+#     - node_modules/
+
+# before_script:
+#   - |
+#     if [ ! -f ~/.nvm/nvm.sh ]; then
+#       wget -qO- https://raw.githubUSERcontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash
+#     fi
+#     source ~/.nvm/nvm.sh
+#     nvm install $NODE_VERSION
+#     nvm use $NODE_VERSION
+#   - npm install
+
+# build:
+#   stage: build
+#   script:
+#     - npm run build
+#   artifacts:
+#     paths:
+#       - build/
+
+# # install:
+# #   stage: install
+# #   image: node:18.4.0
+# #   script:
+# #     - npm install
+# #   artifacts:
+# #     name: "artifacts"
+# #     untracked: true
+# #     expire_in: 60 mins
+# #     paths:
+# #       - .npm/
+# #       - node_modules/
+
+# # build:
+# #   stage: build
+# #   image: node:18.4.0
+# #   script:
+# #     - npm install
+# #   artifacts:
+# #     paths:
+# #       - build
+# #     expire_in: 60 mins
+
+# package:
+#   stage: package
+#   image: node:14.17.6
+#   script:
+#     - npm pack
+#   artifacts:
+#     paths:
+#       - "*.tgz"
+#     expire_in: 60 mins
+#   dependencies:
+#     - build
+
+# # linting:
+# #   stage: quality
+# #   script:
+# #     - npm run lint
+# #   dependencies:
+# #     - install
+
+# # test:unit:
+# #   stage: quality
+# #   script:
+# #     - npm run test:coverage
+# #   dependencies:
+# #     - install
+# #   coverage: /All files[^|]*\|[^|]*\s+([\d\.]+)/
+
+# # test:e2e:
+# #   stage: quality
+# #   image: cypress/browsers:chrome69
+# #   dependencies:
+# #     - install
+# #     - build
+# #   script:
+# #     - npm run e2e:ci
+# #   artifacts:
+# #     paths:
+# #       - cypress/screenshots
+# #       - cypress/videos
+# #     expire_in: 1 day
+
+# #Deploying in Dev
+# Deploy-prod:
+#   stage: Prod-Deploy
+#   tags:
+#     - dostream
+#   when: manual
+#   before_script:
+#     - apt-get install openssh-client
+#     - eval $(ssh-agent -s)
+#     - echo -n "$SSH_PRIVATE_KEY_DEV_INTERNAL_DEV" | tr -d '\r' | ssh-add -
+#     - mkdir -p ~/.ssh
+#     - chmod 700 ~/.ssh
+#     - ssh-keyscan ${SSH_HOST_DEV} >> ~/.ssh/known_hosts
+#     - chmod 644 ~/.ssh/known_hosts
+#   script:
+#     - ssh ${SSH_USER_PROD}@${SSH_HOST_PROD} "echo ${CI_REGISTRY_PASSWORD} | docker login -u ${CI_REGISTRY_USER} --password-stdin ${CI_REGISTRY}"
+#     - scp -i /path/to/your/private/key.pem ${CI_PROJECT_DIR}/${PACKAGE_NAME}*.tgz ${SSH_USER_PROD}@${SSH_HOST_PROD}:/path/to/your/deployment/directory
+#     - ssh ${SSH_USER_PROD}@${SSH_HOST_PROD} "cd /path/to/your/deployment/directory && npm install ${PACKAGE_NAME}*.tgz"
+stages:
+  - setup
+  - build
+  - deploy
+
+build_app:
+  stage: build
+  variables:
+    PACKAGE_VERSION: DEV
+  tags:
+    - dostream
+  before_script:
+    - apk add --update --no-cache python3 py3-pip
+    - pip3 install --upgrade pip
+    - apk add --no-cache curl
+    - apk add --no-cache aws-cli
+    - apk add --update --no-cache nodejs npm
+    - export PATH=$PATH:/usr/local/bin
+    - curl -LO "https://storage.googleapis.com/kubernetes-release/release/$(curl -s https://storage.googleapis.com/kubernetes-release/release/stable.txt)/bin/linux/amd64/kubectl" && chmod +x kubectl && mv kubectl /usr/local/bin/
+    - aws --version
+    - aws configure list
+    - aws configure set aws_access_key_id $AWS_ACCESS_KEY_ID
+    - aws configure set aws_secret_access_key $AWS_SECRET_ACCESS_KEY
+    - aws configure set default.region $AWS_DEFAULT_REGION_DEV
+  script:
+    - aws eks --region $AWS_DEFAULT_REGION_DEV update-kubeconfig --name dostream-eks-dev
+    - NGINX_IP=$(kubectl get svc nginx-proxy-service -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+    - echo $NGINX_IP
+    - ls -la
+    - sed -i "s|{BACKEND_URL}|\"http://${NGINX_IP}:80\"|" src/utils/apicall.js
+    - npm install
+    - CI=false npm run build
+    - PACKAGE_VERSION=DEV
+    - PACKAGE=$PACKAGE_NAME-$PACKAGE_VERSION
+    - echo $PACKAGE
+    - tar -czvf $PACKAGE.tar.gz -C build .
+    - ls -la
+  artifacts:
+    paths:
+      - Dostream-app-${PACKAGE_VERSION}.tar.gz
+
+deploy_to_server:
+  stage: deploy
+  tags:
+    - dostream
+  before_script:
+    - apk add openssh-client
+    - eval $(ssh-agent -s)
+    - echo -n "$SSH_PRIVATE_KEY_DEV" | tr -d '\r' | ssh-add -
+    - mkdir -p ~/.ssh
+    - chmod 700 ~/.ssh
+    - ssh-keyscan "${DEV_SERVER}" >> ~/.ssh/known_hosts
+    - chmod 644 ~/.ssh/known_hosts
+  script:
+    - PACKAGE_VERSION=DEV
+    - PACKAGE=$PACKAGE_NAME-$PACKAGE_VERSION
+    - echo $PACKAGE
+    - ls -l
+    - echo "Checking for the existence of /home/ubuntu/public on $DEV_SERVER"
+    - ssh $USER@$DEV_SERVER '[ -d /home/ubuntu/public ] && rm -rf /home/ubuntu/public || true'
+    - ssh $USER@$DEV_SERVER 'mkdir -p /home/ubuntu/public'
+    - echo "Copying $PACKAGE.tar.gz to $USER@$DEV_SERVER:/home/ubuntu/"
+    - scp -o StrictHostKeyChecking=no $PACKAGE.tar.gz $USER@$DEV_SERVER:/home/ubuntu/
+    - echo "Extracting tarball on $DEV_SERVER"
+    - ssh "$USER@$DEV_SERVER" "cd /home/ubuntu/ && tar -xzvf ${PACKAGE}.tar.gz -C /home/ubuntu/public"
+    - echo "Directory content on $DEV_SERVER"
+    - ssh $USER@$DEV_SERVER 'cd /home/ubuntu/public && ls -la'
+    # - echo "Installing dependencies on $DEV_SERVER"
+    # - ssh $USER@$DEV_SERVER 'cd /home/ubuntu/public && npm install --production'
+    - echo "Starting the application on $DEV_SERVER"
+    - ssh $USER@$DEV_SERVER 'cd /home/ubuntu/public && npm start'
+    - set +x  # Disable debugging
+  needs:
+    - job: build_app
+      artifacts: true
+
